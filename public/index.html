@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="stylesheet" href="style.css" />
+  <title>URL Shortener</title>
+</head>
+<body>
+  <div class="container">
+    <h2>URL Shortener</h2>
+    <form id="shorten-form">
+      <div>
+        <label for="url">Enter URL:</label>
+        <input type="url" name="url" id="url" required placeholder="https://example.com" />
+      </div>
+      <div>
+        <label for="shortCode">Custom short code (optional):</label>
+        <input type="text" name="shortCode" id="shortCode" 
+               placeholder="Leave blank for random" 
+               pattern="[a-zA-Z0-9_-]+" 
+               title="Only letters, numbers, hyphens and underscores allowed"/>
+      </div>
+      <button type="submit">Shorten</button>
+    </form>
+
+    <h3>Shortened URLs</h3>
+    <ul id="shortened-urls"></ul>
+  </div>
+
+  <script>
+    const listElement = document.getElementById("shortened-urls");
+    const serverUrl = `http://localhost:${location.port || 3002}`;
+
+    const fetchShortenedURLs = async () => {
+      try {
+        const response = await fetch("/links");
+        const links = await response.json();
+
+        listElement.innerHTML = ""; 
+
+        for (const [code, originalUrl] of Object.entries(links)) {
+          const li = document.createElement("li");
+          li.innerHTML = `
+            <a href="${serverUrl}/${code}" target="_blank">${serverUrl}/${code}</a>
+            <span class="original-url">→ ${originalUrl}</span>
+            <button class="copy-btn" data-url="${serverUrl}/${code}">Copy</button>
+          `;
+          listElement.appendChild(li);
+        }
+
+        
+        document.querySelectorAll('.copy-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            navigator.clipboard.writeText(e.target.dataset.url);
+            e.target.textContent = 'Copied!';
+            setTimeout(() => {
+              e.target.textContent = 'Copy';
+            }, 2000);
+          });
+        });
+      } catch (err) {
+        console.error("Error fetching shortened URLs:", err);
+      }
+    };
+
+    document.getElementById("shorten-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const formData = new FormData(event.target);
+      const url = formData.get("url");
+      const shortCode = formData.get("shortCode") || undefined;
+
+      try {
+        const response = await fetch("/shorten", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, shortCode })
+        });
+
+        const result = await response.json();
+        
+        if (response.ok) {
+          alert(`Short URL created: ${result.shortUrl}`);
+          event.target.reset();
+          await fetchShortenedURLs();
+        } else {
+          const errorMessage = await response.text();
+          alert(`Error: ${errorMessage}`);
+        }
+      } catch (error) {
+        console.error("Request failed:", error);
+        alert("Something went wrong. Please try again.");
+      }
+    });
+
+    fetchShortenedURLs();
+  </script>
+</body>
+</html>
