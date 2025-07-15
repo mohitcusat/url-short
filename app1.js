@@ -54,7 +54,13 @@ const server = createServer(async (req, res) => {
   const urlPath = req.url.split("?")[0];
 
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    return res.end();
+  }
 
   if (req.method === "GET") {
     if (urlPath === "/") {
@@ -71,7 +77,6 @@ const server = createServer(async (req, res) => {
       return res.end(JSON.stringify(links));
     }
 
-    // Handle short URL redirects
     if (urlPath.length > 1) {
       const links = await loadLinks();
       const code = urlPath.slice(1);
@@ -95,26 +100,28 @@ const server = createServer(async (req, res) => {
         const { url, shortCode } = JSON.parse(body);
         
         if (!url) {
-          res.writeHead(400, { "Content-Type": "text/plain" });
-          return res.end("URL is required");
+          res.writeHead(400, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({ error: "URL is required" }));
         }
 
         if (!isValidUrl(url)) {
-          res.writeHead(400, { "Content-Type": "text/plain" });
-          return res.end("Invalid URL format");
+          res.writeHead(400, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({ error: "Invalid URL format" }));
         }
 
         const links = await loadLinks();
         const finalShortCode = shortCode || crypto.randomBytes(4).toString("hex");
 
         if (shortCode && !/^[a-zA-Z0-9_-]+$/.test(shortCode)) {
-          res.writeHead(400, { "Content-Type": "text/plain" });
-          return res.end("Short code can only contain letters, numbers, hyphens and underscores");
+          res.writeHead(400, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({ 
+            error: "Short code can only contain letters, numbers, hyphens and underscores" 
+          }));
         }
 
         if (links[finalShortCode]) {
-          res.writeHead(400, { "Content-Type": "text/plain" });
-          return res.end("Short code already exists");
+          res.writeHead(400, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({ error: "Short code already exists" }));
         }
 
         links[finalShortCode] = url;
@@ -127,8 +134,9 @@ const server = createServer(async (req, res) => {
           shortUrl: `http://localhost:${PORT}/${finalShortCode}`
         }));
       } catch (err) {
-        res.writeHead(400, { "Content-Type": "text/plain" });
-        res.end("Invalid request data");
+        console.error("Error processing request:", err);
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Invalid request data" }));
       }
     });
     return;

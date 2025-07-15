@@ -21,26 +21,44 @@
                pattern="[a-zA-Z0-9_-]+" 
                title="Only letters, numbers, hyphens and underscores allowed"/>
       </div>
-      <button type="submit">Shorten</button>
+      <button type="submit">Shorten URL</button>
     </form>
 
     <h3>Shortened URLs</h3>
-    <ul id="shortened-urls"></ul>
+    <ul id="shortened-urls">
+      <li class="loading">Loading your shortened URLs...</li>
+    </ul>
   </div>
-
-  <script>
+<script>
     const listElement = document.getElementById("shortened-urls");
-    const serverUrl = `http://localhost:${location.port || 3002}`;
+    // Use the correct backend URL (must match your server's port)
+    const serverUrl = 'http://localhost:3002';
+
+    const showError = (message) => {
+      listElement.innerHTML = `<li class="error">${message}</li>`;
+      console.error(message);
+    };
 
     const fetchShortenedURLs = async () => {
       try {
-        const response = await fetch("/links");
+        listElement.innerHTML = '<li class="loading">Loading your shortened URLs...</li>';
+        
+        const response = await fetch(`${serverUrl}/links`);
+        
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status} status`);
+        }
+        
         const links = await response.json();
 
-        listElement.innerHTML = ""; 
+        if (Object.keys(links).length === 0) {
+          listElement.innerHTML = '<li class="empty">No shortened URLs yet</li>';
+          return;
+        }
 
+        listElement.innerHTML = '';
         for (const [code, originalUrl] of Object.entries(links)) {
-          const li = document.createElement("li");
+          const li = document.createElement('li');
           li.innerHTML = `
             <a href="${serverUrl}/${code}" target="_blank">${serverUrl}/${code}</a>
             <span class="original-url">→ ${originalUrl}</span>
@@ -49,52 +67,66 @@
           listElement.appendChild(li);
         }
 
-        
+        // Add copy functionality
         document.querySelectorAll('.copy-btn').forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            navigator.clipboard.writeText(e.target.dataset.url);
-            e.target.textContent = 'Copied!';
-            setTimeout(() => {
-              e.target.textContent = 'Copy';
-            }, 2000);
+          btn.addEventListener('click', async (e) => {
+            try {
+              await navigator.clipboard.writeText(e.target.dataset.url);
+              e.target.textContent = 'Copied!';
+              setTimeout(() => e.target.textContent = 'Copy', 2000);
+            } catch (err) {
+              showError('Failed to copy URL');
+            }
           });
         });
+
       } catch (err) {
-        console.error("Error fetching shortened URLs:", err);
+        showError(`Failed to load URLs. ${err.message}. Make sure the server is running at ${serverUrl}`);
       }
     };
 
-    document.getElementById("shorten-form").addEventListener("submit", async (event) => {
-      event.preventDefault();
-
-      const formData = new FormData(event.target);
-      const url = formData.get("url");
-      const shortCode = formData.get("shortCode") || undefined;
+    document.getElementById('shorten-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const urlInput = document.getElementById('url');
+      const shortCodeInput = document.getElementById('shortCode');
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      
+      const url = urlInput.value;
+      const shortCode = shortCodeInput.value || undefined;
 
       try {
-        const response = await fetch("/shorten", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Shortening...';
+        
+        const response = await fetch(`${serverUrl}/shorten`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url, shortCode })
         });
 
-        const result = await response.json();
-        
-        if (response.ok) {
-          alert(`Short URL created: ${result.shortUrl}`);
-          event.target.reset();
-          await fetchShortenedURLs();
-        } else {
-          const errorMessage = await response.text();
-          alert(`Error: ${errorMessage}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Unknown server error');
         }
+
+        const data = await response.json();
+        alert(`Shortened successfully!\n\n${data.shortUrl}`);
+        urlInput.value = '';
+        shortCodeInput.value = '';
+        await fetchShortenedURLs();
+        
       } catch (error) {
-        console.error("Request failed:", error);
-        alert("Something went wrong. Please try again.");
+        showError(error.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Shorten URL';
       }
     });
 
+    // Initial load
     fetchShortenedURLs();
-  </script>
+</script>
+  
 </body>
 </html>
